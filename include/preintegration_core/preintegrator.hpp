@@ -11,6 +11,7 @@ public:
     explicit Preintegrator(PreintegrationOptions options = {});
 
     void clear();
+    void seedPreviousIncrement(const ImuIncrement& increment);
     void add(const ImuIncrement& increment);
 
     const PreintegratedDelta& delta() const { return delta_; }

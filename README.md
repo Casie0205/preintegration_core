@@ -8,6 +8,7 @@
 - [API](#api)
 - [Conventions](#conventions)
 - [Validation](#validation)
+- [External regression](#external-regression)
 - [References](#references)
 - [License](#license)
 
@@ -62,6 +63,10 @@ integrator.add(bias_free_increment);
 const auto& delta = integrator.delta();
 ```
 
+When the first external IMU sample is only an anchor, call
+`seedPreviousIncrement()` before adding the first integrated sample. It updates
+only the adjacent-sample cache and does not change the accumulated delta.
+
 可选的 `compose()` 只处理常值重力，不包含地球自转或哥氏项：
 
 ```cpp
@@ -95,6 +100,33 @@ const auto next = preintegration_core::compose(initial, delta, gravity_ned);
 两个 CTest 目标。参考测试位于
 [`tests/test_preintegration_reference.cpp`](tests/test_preintegration_reference.cpp)，
 使用 200 倍细步独立积分，不调用库内预积分递推。
+
+## External regression
+
+外部回归是 opt-in，不增加本库的默认依赖。
+
+GTSAM:
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_PREFIX_PATH=/path/to/gtsam-install \
+  -DPREINTEGRATION_CORE_BUILD_GTSAM_REGRESSION=ON
+```
+
+此测试把相同增量细分 100 次，分别送入本库和 GTSAM
+`PreintegratedCombinedMeasurements`，对照 `DeltaR/DeltaV/DeltaP`、时长和
+`predict()`。
+
+OB_GINS:
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DPREINTEGRATION_CORE_BUILD_OB_GINS_REGRESSION=ON \
+  -DPREINTEGRATION_CORE_OB_GINS_SOURCE_DIR=/path/to/OB_GINS
+```
+
+此测试直接把 OB_GINS `PreintegrationNormal` 与本库的圆锥/划桨实现逐项比较，
+并使用 `seedPreviousIncrement()` 对齐第一帧历史样本。
 
 ## References
 

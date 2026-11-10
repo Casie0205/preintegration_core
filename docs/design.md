@@ -23,6 +23,9 @@ delta_velocity_mps
 
 零偏、尺度因子和杆臂必须由调用方预先处理。库不保存原始 IMU 序列，也不重新积分历史零偏。
 
+如果外部求解器从第二帧开始积分，可用 `seedPreviousIncrement()` 写入第一帧历史锚点。
+该操作不累计时间、样本数或相对增量。
+
 `PreintegratedDelta` 表示 `b0` 与 `bk` 之间的相对测量：
 
 ```text
@@ -91,7 +94,12 @@ p_j = p_i + v_i * dt + 0.5 * g * dt^2 + R_i * DeltaP
 - 圆锥/划桨开关一致性和首帧 sculling 项；
 - 独立细步参考积分，对多轴旋转和三维比力逐项对照；
 - 非法 `dt`、非有限输入、非等间隔和非法组合状态拒绝；
-- 后续增加与 GTSAM/OB 预积分在无地球项短区间内的回归。
+- GTSAM `PreintegratedCombinedMeasurements` 的增量与 `predict()` 外部回归；
+- OB_GINS `PreintegrationNormal` 的同离散公式外部回归。
 
 参考积分测试位于 `tests/test_preintegration_reference.cpp`，每个采样区间细分 200 次，
 独立计算 `delta_q`、`delta_v` 和 `delta_p`。
+
+GTSAM 回归位于 `tests/test_preintegration_gtsam.cpp`，把同一分段常值增量细分 100 次后
+同时送入两套实现。OB_GINS 回归位于 `tests/test_preintegration_ob_gins.cpp`，使用
+`seedPreviousIncrement()` 对齐首帧，再比较相同的二阶离散递推。

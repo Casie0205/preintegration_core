@@ -39,6 +39,12 @@ void Preintegrator::clear() {
     sample_count_ = 0;
 }
 
+void Preintegrator::seedPreviousIncrement(const ImuIncrement& increment) {
+    validateIncrement(increment);
+    previous_increment_ = increment;
+    has_previous_increment_ = true;
+}
+
 void Preintegrator::add(const ImuIncrement& increment) {
     validateIncrement(increment);
     if (!std::isfinite(options_.equal_interval_tolerance_s) ||
