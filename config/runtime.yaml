@@ -1,0 +1,48 @@
+# preintegration_core runtime configuration.
+# All fields use the same names and defaults as inertial_core.
+
+runtime:
+  # 是否计算地球自转角速度 omega_ie，以及导航系随地球旋转的相应补偿。
+  # false: 不计算地球自转；即使 enable_coriolis=true 也不会产生 2*omega_ie x v。
+  enable_earth_rotation: true
+
+  # 是否计算运输率 omega_en。
+  # 运输率由载体速度、RM/RN、纬度和高度产生，不等同于地球自转。
+  enable_transport_rate: true
+
+  # 是否在速度方程中加入地球哥氏加速度 -2*omega_ie x v。
+  # 该开关只有在 enable_earth_rotation=true 时才产生实际地球哥氏效应。
+  enable_coriolis: true
+
+  # true: 使用 WGS84 的子午圈半径 RM 和卯酉圈半径 RN。
+  # false: RM 和 RN 都退化为 fallback_sphere_radius_m。
+  # 该开关只改变地球半径模型，不改变 NED/LLH 坐标定义。
+  enable_ellipsoid_radii: true
+
+  # normal: 使用随纬度、高度变化的 WGS84 正常重力。
+  # constant: 固定使用 constant_gravity_mps2。
+  gravity_model: normal
+
+  # 地球自转角速度 Omega，单位 rad/s。
+  # 正式对比中建议保持默认值不变。
+  earth_rotation_rate_radps: 7.2921151467e-5
+
+  # gravity_model=constant 时使用的重力大小，单位 m/s^2。
+  constant_gravity_mps2: 9.80665
+
+  # WGS84 椭球长半轴 a，单位 m。
+  semi_major_axis_m: 6378137.0
+
+  # WGS84 第一偏心率平方 e^2，无量纲。
+  eccentricity_squared: 0.0066943799901413156
+
+  # enable_ellipsoid_radii=false 时使用的球半径，单位 m。
+  fallback_sphere_radius_m: 6371000.0
+
+  # 是否计算相邻 IMU 采样间的圆锥和划桨二阶修正。
+  # false: 关闭 0.5*theta x delta_v、两个 1/12 交叉项以及圆锥修正。
+  enable_coning_sculling: true
+
+  # 相邻 IMU 采样间隔 dt 的最大允许差异，单位 s。
+  # 只有 enable_coning_sculling=true 时该检查生效。
+  equal_interval_tolerance_s: 1.0e-9

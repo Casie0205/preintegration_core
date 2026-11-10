@@ -8,6 +8,11 @@ include(CMakePackageConfigHelpers)
 option(PREINTEGRATION_CORE_BUILD_TESTS "Build preintegration_core tests" ON)
 option(PREINTEGRATION_CORE_BUILD_EXAMPLES "Build preintegration_core examples" ON)
 option(
+    PREINTEGRATION_CORE_BUILD_YAML_CONFIG
+    "Build and install the YAML runtime configuration target"
+    ON
+)
+option(
     PREINTEGRATION_CORE_BUILD_GTSAM_REGRESSION
     "Build the optional GTSAM cross-regression test"
     OFF
@@ -39,6 +44,27 @@ target_include_directories(preintegration_core
 )
 target_link_libraries(preintegration_core PUBLIC Eigen3::Eigen)
 
+set(PREINTEGRATION_CORE_HAS_YAML_CONFIG OFF)
+if(PREINTEGRATION_CORE_BUILD_YAML_CONFIG)
+    find_package(yaml-cpp CONFIG REQUIRED)
+    add_library(preintegration_core_yaml INTERFACE)
+    add_library(preintegration_core::yaml ALIAS preintegration_core_yaml)
+    if(TARGET yaml-cpp::yaml-cpp)
+        set(PREINTEGRATION_CORE_YAML_TARGET yaml-cpp::yaml-cpp)
+    elseif(TARGET yaml-cpp)
+        set(PREINTEGRATION_CORE_YAML_TARGET yaml-cpp)
+    else()
+        message(FATAL_ERROR "yaml-cpp CMake target was not found")
+    endif()
+    target_link_libraries(
+        preintegration_core_yaml
+        INTERFACE
+            preintegration_core::preintegration_core
+            ${PREINTEGRATION_CORE_YAML_TARGET}
+    )
+    set(PREINTEGRATION_CORE_HAS_YAML_CONFIG ON)
+endif()
+
 if(MSVC)
     target_compile_options(preintegration_core PRIVATE /W4 /permissive-)
 else()
@@ -64,6 +90,27 @@ if(PREINTEGRATION_CORE_BUILD_TESTS)
         NAME preintegration_core_reference_tests
         COMMAND test_preintegration_reference
     )
+
+    if(PREINTEGRATION_CORE_HAS_YAML_CONFIG)
+        add_executable(
+            test_runtime_config_yaml
+            tests/test_runtime_config_yaml.cpp
+        )
+        target_link_libraries(
+            test_runtime_config_yaml
+            PRIVATE
+                preintegration_core::yaml
+        )
+        target_compile_definitions(
+            test_runtime_config_yaml
+            PRIVATE
+                RUNTIME_CONFIG_FILE="${CMAKE_CURRENT_SOURCE_DIR}/config/runtime.yaml"
+        )
+        add_test(
+            NAME preintegration_core_yaml_config_tests
+            COMMAND test_runtime_config_yaml
+        )
+    endif()
 endif()
 
 if(PREINTEGRATION_CORE_BUILD_EXAMPLES)
@@ -168,7 +215,15 @@ install(TARGETS preintegration_core
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+if(PREINTEGRATION_CORE_HAS_YAML_CONFIG)
+    install(TARGETS preintegration_core_yaml
+        EXPORT preintegration_coreTargets
+    )
+endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES config/runtime.yaml
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/preintegration_core/config
+)
 install(EXPORT preintegration_coreTargets
     FILE preintegration_coreTargets.cmake
     NAMESPACE preintegration_core::

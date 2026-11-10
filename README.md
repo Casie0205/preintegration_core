@@ -7,6 +7,7 @@
 - [Build](#build)
 - [API](#api)
 - [Conventions](#conventions)
+- [YAML configuration](#yaml-configuration)
 - [Validation](#validation)
 - [External regression](#external-regression)
 - [References](#references)
@@ -104,6 +105,26 @@ const auto next = preintegration_core::composeWithEnvironment(
 - `composeWithEnvironment()` 使用与 `inertial_core` 相同的地球旋转、运输率和哥氏开关。
 
 完整接口约定见 [docs/design.md](docs/design.md)。
+
+## YAML configuration
+
+逐项注释的默认配置文件位于 [`config/runtime.yaml`](config/runtime.yaml)。
+
+启用 YAML 加载目标：
+
+```bash
+cmake -S . -B build -G Ninja -DPREINTEGRATION_CORE_BUILD_YAML_CONFIG=ON
+```
+
+```cpp
+#include "preintegration_core/runtime_config_yaml.hpp"
+
+const preintegration_core::RuntimeConfig config =
+    preintegration_core::loadRuntimeConfigFile("config/runtime.yaml");
+```
+
+加载器支持 `runtime:` 根节点，也接受直接放在文档根节点下的同名字段。
+缺失字段保留 `RuntimeConfig` 默认值。
 
 ## Validation
 

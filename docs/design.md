@@ -57,6 +57,7 @@ equal_interval_tolerance_s
 
 相对积分递推使用 `enable_coning_sculling` 和 `equal_interval_tolerance_s`。
 `composeWithEnvironment()` 使用地球旋转、运输率和哥氏开关处理外部提供的地球向量。
+`runtime_config_yaml.hpp` 将 `config/runtime.yaml` 映射到同一个结构；缺失字段保留默认值。
 
 ## Integration sequence
 
