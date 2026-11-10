@@ -34,6 +34,20 @@ if(PREINTEGRATION_CORE_BUILD_TESTS)
     add_executable(test_preintegration_core tests/test_preintegration_core.cpp)
     target_link_libraries(test_preintegration_core PRIVATE preintegration_core::preintegration_core)
     add_test(NAME preintegration_core_tests COMMAND test_preintegration_core)
+
+    add_executable(
+        test_preintegration_reference
+        tests/test_preintegration_reference.cpp
+    )
+    target_link_libraries(
+        test_preintegration_reference
+        PRIVATE
+            preintegration_core::preintegration_core
+    )
+    add_test(
+        NAME preintegration_core_reference_tests
+        COMMAND test_preintegration_reference
+    )
 endif()
 
 if(PREINTEGRATION_CORE_BUILD_EXAMPLES)

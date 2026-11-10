@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -37,6 +38,10 @@ int main() {
     }
     const auto& acceleration_delta = accelerator.delta();
     check(
+        accelerator.sampleCount() == 1000,
+        "sample count tracks processed increments",
+        static_cast<double>(accelerator.sampleCount()));
+    check(
         near(acceleration_delta.duration_s, 1.0, 1e-12),
         "duration accumulates IMU intervals",
         acceleration_delta.duration_s);
@@ -67,6 +72,9 @@ int main() {
         yaw);
 
     preintegration_core::NavState initial;
+    initial.time_s = 2.0;
+    initial.position_ned_m = Eigen::Vector3d(12.0, -3.0, 5.0);
+    initial.velocity_ned_mps = Eigen::Vector3d(1.5, -0.5, 0.2);
     initial.q_bn = Eigen::Quaterniond(
         Eigen::AngleAxisd(0.3, Eigen::Vector3d::UnitZ()));
     const Eigen::Vector3d gravity(0.0, 0.0, 9.80665);
@@ -76,32 +84,39 @@ int main() {
     const double cos_yaw = std::cos(0.3);
     const double sin_yaw = std::sin(0.3);
     check(
-        near(composed.time_s, initial.time_s + 1.0, 1e-12),
+        near(composed.time_s, 3.0, 1e-12),
         "compose advances time");
     check(
         near(
             composed.velocity_ned_mps.x(),
-            cos_yaw * 10.0 + sin_yaw * 2.0,
+            initial.velocity_ned_mps.x() + cos_yaw * 10.0 + sin_yaw * 2.0,
             1e-9) &&
             near(
                 composed.velocity_ned_mps.y(),
-                sin_yaw * 10.0 - cos_yaw * 2.0,
+                initial.velocity_ned_mps.y() + sin_yaw * 10.0 -
+                    cos_yaw * 2.0,
                 1e-9) &&
-            near(composed.velocity_ned_mps.z(), 9.80665 + 0.5, 1e-9),
+            near(
+                composed.velocity_ned_mps.z(),
+                initial.velocity_ned_mps.z() + 9.80665 + 0.5,
+                1e-9),
         "compose rotates body-frame velocity into navigation coordinates",
         composed.velocity_ned_mps.x());
     check(
         near(
             composed.position_ned_m.x(),
-            cos_yaw * 5.0 + sin_yaw * 1.0,
+            initial.position_ned_m.x() + initial.velocity_ned_mps.x() +
+                cos_yaw * 5.0 + sin_yaw * 1.0,
             1e-8) &&
             near(
                 composed.position_ned_m.y(),
-                sin_yaw * 5.0 - cos_yaw * 1.0,
+                initial.position_ned_m.y() + initial.velocity_ned_mps.y() +
+                    sin_yaw * 5.0 - cos_yaw * 1.0,
                 1e-8) &&
             near(
                 composed.position_ned_m.z(),
-                0.25 + 0.5 * 9.80665,
+                initial.position_ned_m.z() + initial.velocity_ned_mps.z() +
+                    0.25 + 0.5 * 9.80665,
                 1e-8),
         "compose rotates body-frame position into navigation coordinates",
         composed.position_ned_m.x());
@@ -115,6 +130,10 @@ int main() {
     check(
         attitude_end.q_bn.angularDistance(expected_attitude) < 1e-10,
         "compose multiplies initial attitude on the left of DeltaR");
+    check(
+        std::abs(rotator.delta().delta_q_b0_bk.norm() - 1.0) < 1e-14,
+        "relative attitude remains normalized",
+        rotator.delta().delta_q_b0_bk.norm());
 
     preintegration_core::Preintegrator first_sample(options);
     preintegration_core::ImuIncrement first_increment;
@@ -160,6 +179,66 @@ int main() {
         unequal_dt_thrown = true;
     }
     check(unequal_dt_thrown, "unequal dt is rejected for two-sample corrections");
+
+    bool nonfinite_thrown = false;
+    try {
+        preintegration_core::ImuIncrement nonfinite;
+        nonfinite.dt_s = 0.001;
+        nonfinite.delta_velocity_mps.x() =
+            std::numeric_limits<double>::quiet_NaN();
+        rotator.add(nonfinite);
+    } catch (const std::invalid_argument&) {
+        nonfinite_thrown = true;
+    }
+    check(nonfinite_thrown, "non-finite increment values are rejected");
+
+    bool invalid_tolerance_thrown = false;
+    try {
+        preintegration_core::PreintegrationOptions invalid_options;
+        invalid_options.equal_interval_tolerance_s = -1.0;
+        preintegration_core::Preintegrator invalid_tolerance(invalid_options);
+        invalid_tolerance.add(acceleration);
+    } catch (const std::invalid_argument&) {
+        invalid_tolerance_thrown = true;
+    }
+    check(invalid_tolerance_thrown, "invalid equal-interval tolerance is rejected");
+
+    preintegration_core::PreintegrationOptions disabled_options;
+    disabled_options.enable_coning_sculling = false;
+    preintegration_core::Preintegrator disabled_sculling(disabled_options);
+    disabled_sculling.add(first_increment);
+    check(
+        near(disabled_sculling.delta().delta_v_mps.x(), 0.001, 1e-15) &&
+            near(disabled_sculling.delta().delta_v_mps.y(), 0.0, 1e-15),
+        "coning/sculling disable switch removes the cross term");
+
+    bool invalid_compose_attitude_thrown = false;
+    try {
+        preintegration_core::NavState invalid_attitude;
+        invalid_attitude.q_bn.coeffs().setZero();
+        preintegration_core::compose(
+            invalid_attitude,
+            preintegration_core::PreintegratedDelta{},
+            Eigen::Vector3d::Zero());
+    } catch (const std::invalid_argument&) {
+        invalid_compose_attitude_thrown = true;
+    }
+    check(
+        invalid_compose_attitude_thrown,
+        "compose rejects a zero initial attitude quaternion");
+
+    bool negative_duration_thrown = false;
+    try {
+        preintegration_core::PreintegratedDelta invalid_delta;
+        invalid_delta.duration_s = -1.0;
+        preintegration_core::compose(
+            preintegration_core::NavState{},
+            invalid_delta,
+            Eigen::Vector3d::Zero());
+    } catch (const std::invalid_argument&) {
+        negative_duration_thrown = true;
+    }
+    check(negative_duration_thrown, "compose rejects negative duration");
 
     if (g_failures == 0) {
         std::printf("preintegration_core_tests: all checks passed\n");

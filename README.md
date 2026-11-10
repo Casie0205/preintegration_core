@@ -85,10 +85,16 @@ const auto next = preintegration_core::compose(initial, delta, gravity_ned);
 
 - 常值比力到速度和位置；
 - 常值角速度到姿态增量；
-- 时间累计；
-- 无图状态组合中的重力；
-- `clear()` 状态复位；
-- 非法时间间隔拒绝。
+- 时间累计和样本计数；
+- 无图状态组合中的重力、姿态顺序和北/东坐标旋转；
+- 首帧 sculling 项和关闭圆锥/划桨后的退化行为；
+- 独立 200 倍细步参考积分，对照多轴旋转和三维比力；
+- `clear()` 状态复位、四元数归一化和非法输入拒绝。
+
+测试分为 `preintegration_core_tests` 与 `preintegration_core_reference_tests`
+两个 CTest 目标。参考测试位于
+[`tests/test_preintegration_reference.cpp`](tests/test_preintegration_reference.cpp)，
+使用 200 倍细步独立积分，不调用库内预积分递推。
 
 ## References
 

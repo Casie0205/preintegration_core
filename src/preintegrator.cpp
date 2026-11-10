@@ -101,10 +101,12 @@ NavState compose(
     if (!initial.position_ned_m.allFinite() ||
         !initial.velocity_ned_mps.allFinite() ||
         !initial.q_bn.coeffs().allFinite() ||
+        initial.q_bn.norm() < 1e-12 ||
         !std::isfinite(initial.time_s) ||
         !std::isfinite(delta.duration_s) ||
         delta.duration_s < 0.0 ||
         !delta.delta_q_b0_bk.coeffs().allFinite() ||
+        delta.delta_q_b0_bk.norm() < 1e-12 ||
         !delta.delta_v_mps.allFinite() ||
         !delta.delta_p_m.allFinite() ||
         !gravity_ned_mps2.allFinite()) {
