@@ -3,6 +3,7 @@
 ## 目录
 
 - [Data contract](#data-contract)
+- [Configuration](#configuration)
 - [Integration sequence](#integration-sequence)
 - [Coning and sculling](#coning-and-sculling)
 - [State composition](#state-composition)
@@ -34,6 +35,28 @@ delta_v_mps, expressed in b0
 delta_p_m,   expressed in b0
 duration_s
 ```
+
+## Configuration
+
+`RuntimeConfig` 与 `inertial_core` 使用相同字段名和默认值：
+
+```text
+enable_earth_rotation
+enable_transport_rate
+enable_coriolis
+enable_ellipsoid_radii
+gravity_model
+earth_rotation_rate_radps
+constant_gravity_mps2
+semi_major_axis_m
+eccentricity_squared
+fallback_sphere_radius_m
+enable_coning_sculling
+equal_interval_tolerance_s
+```
+
+相对积分递推使用 `enable_coning_sculling` 和 `equal_interval_tolerance_s`。
+`composeWithEnvironment()` 使用地球旋转、运输率和哥氏开关处理外部提供的地球向量。
 
 ## Integration sequence
 
@@ -71,7 +94,21 @@ v_j = v_i + g * dt + R_i * DeltaV
 p_j = p_i + v_i * dt + 0.5 * g * dt^2 + R_i * DeltaP
 ```
 
-该函数只用于无图状态下查看纯积分结果。它不计算地球自转、运输率或哥氏项。
+该函数只用于无图状态下查看纯积分结果，不计算地球项。
+
+`composeWithEnvironment()` 在地球开关开启时，额外应用导航系旋转、运输率和哥氏项：
+
+```text
+q_nn = Exp(-(omega_ie + omega_en) * dt)
+q_bn_j = q_nn * q_bn_i * DeltaR
+a_nav = gravity - (2 * omega_ie + omega_en) x velocity
+v_j = v_i + a_nav * dt + R_i * DeltaV
+p_j = p_i + v_i * dt + 0.5 * a_nav * dt^2 + R_i * DeltaP
+```
+
+地球向量由调用方或对比驱动程序提供，库本身不重新实现 WGS84 机械编排。
+`makeEarthEnvironment()` 提供短区间局部近似，便于使用与 `inertial_core` 相同的配置字段；
+长距离、高纬度或高动态场景仍应使用 `inertial_core` 的完整地球模型。
 
 ## Intentional omissions
 

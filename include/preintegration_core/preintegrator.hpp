@@ -33,4 +33,20 @@ NavState compose(
     const PreintegratedDelta& delta,
     const Eigen::Vector3d& gravity_ned_mps2);
 
+// Same no-factor composition, with the common Earth switches applied to
+// caller-supplied local gravity and navigation-frame rate vectors.
+NavState composeWithEnvironment(
+    const NavState& initial,
+    const PreintegratedDelta& delta,
+    const EarthEnvironment& environment,
+    const RuntimeConfig& options = {});
+
+// Builds a local constant-environment approximation for short intervals. Full
+// geodetic mechanization remains in inertial_core.
+EarthEnvironment makeEarthEnvironment(
+    double latitude_rad,
+    double height_m,
+    const Eigen::Vector3d& velocity_ned_mps,
+    const RuntimeConfig& options = {});
+
 }  // namespace preintegration_core

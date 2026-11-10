@@ -36,11 +36,12 @@ duration_s     integrated duration
 - 零偏状态估计；
 - IMU 噪声协方差；
 - 图结构、边缘化、固定滞后平滑；
-- 地球自转、运输率和哥氏项；
+- 相对 `DeltaR/DeltaV/DeltaP` 内部的地球项；
 - 时间插值。
 
 调用方必须先完成时间对齐和零偏补偿。若需要地球机械编排，应使用独立的
-`inertial_core`，不要将图优化接口混入本库。
+`inertial_core`，不要将图优化接口混入本库。可选的 `composeWithEnvironment()`
+只负责把外部提供的地球向量应用到导航状态，不改变相对预积分量。
 
 ## Build
 
@@ -63,6 +64,11 @@ integrator.add(bias_free_increment);
 const auto& delta = integrator.delta();
 ```
 
+`RuntimeConfig` 与 `inertial_core` 使用相同字段名和默认值。纯预积分递推使用其中的
+`enable_coning_sculling` 和 `equal_interval_tolerance_s`。
+两个库也都提供 `presets.hpp`，包含 `noEarthConfig()`、`rotationOnlyConfig()`、
+`fullBasicConfig()` 和 `constantGravityConfig()`。
+
 When the first external IMU sample is only an anchor, call
 `seedPreviousIncrement()` before adding the first integrated sample. It updates
 only the adjacent-sample cache and does not change the accumulated delta.
@@ -73,6 +79,20 @@ only the adjacent-sample cache and does not change the accumulated delta.
 const auto next = preintegration_core::compose(initial, delta, gravity_ned);
 ```
 
+需要与 `inertial_core` 使用相同地球开关时：
+
+```cpp
+preintegration_core::EarthEnvironment environment;
+environment = preintegration_core::makeEarthEnvironment(
+    latitude_rad, height_m, velocity_ned_mps, runtime_config);
+
+const auto next = preintegration_core::composeWithEnvironment(
+    initial, delta, environment, runtime_config);
+```
+
+`makeEarthEnvironment()` 是短区间局部近似，完整测地机械编排仍由
+`inertial_core` 负责。
+
 ## Conventions
 
 - IMU 增量基于 FRD 机体系；
@@ -81,6 +101,7 @@ const auto next = preintegration_core::compose(initial, delta, gravity_ned);
 - `compose()` 中的 `NavState.q_bn` 为 body-to-NED；
 - `0.5 * theta x dv` 每帧都计算；
 - 两个 `1/12` 圆锥/划桨交叉项要求相邻 `dt` 相等，默认容差为 `1e-9 s`。
+- `composeWithEnvironment()` 使用与 `inertial_core` 相同的地球旋转、运输率和哥氏开关。
 
 完整接口约定见 [docs/design.md](docs/design.md)。
 
@@ -92,6 +113,7 @@ const auto next = preintegration_core::compose(initial, delta, gravity_ned);
 - 常值角速度到姿态增量；
 - 时间累计和样本计数；
 - 无图状态组合中的重力、姿态顺序和北/东坐标旋转；
+- 共享 `RuntimeConfig` 默认值和地球开关组合；
 - 首帧 sculling 项和关闭圆锥/划桨后的退化行为；
 - 独立 200 倍细步参考积分，对照多轴旋转和三维比力；
 - `clear()` 状态复位、四元数归一化和非法输入拒绝。

@@ -1,4 +1,5 @@
 #include "preintegration_core/preintegrator.hpp"
+#include "preintegration_core/presets.hpp"
 
 #include <Eigen/Geometry>
 
@@ -24,10 +25,40 @@ bool near(const double value, const double expected, const double tolerance) {
     return std::abs(value - expected) <= tolerance;
 }
 
+Eigen::Quaterniond expMap(const Eigen::Vector3d& rotation_vector_rad) {
+    const double angle = rotation_vector_rad.norm();
+    if (angle < 1e-15) {
+        return Eigen::Quaterniond::Identity();
+    }
+    return Eigen::Quaterniond(
+        Eigen::AngleAxisd(angle, rotation_vector_rad / angle));
+}
+
 }  // namespace
 
 int main() {
     preintegration_core::PreintegrationOptions options;
+    const preintegration_core::RuntimeConfig no_earth_preset =
+        preintegration_core::noEarthConfig();
+    const preintegration_core::RuntimeConfig rotation_only_preset =
+        preintegration_core::rotationOnlyConfig();
+    check(
+        !no_earth_preset.enable_earth_rotation &&
+            !no_earth_preset.enable_transport_rate &&
+            !no_earth_preset.enable_coriolis &&
+            rotation_only_preset.enable_earth_rotation &&
+            !rotation_only_preset.enable_transport_rate &&
+            rotation_only_preset.enable_coriolis,
+        "runtime presets expose consistent experiment modes");
+    check(
+        options.enable_earth_rotation &&
+            options.enable_transport_rate &&
+            options.enable_coriolis &&
+            options.enable_ellipsoid_radii &&
+            options.enable_coning_sculling &&
+            options.gravity_model ==
+                preintegration_core::GravityModel::kNormalGravity,
+        "runtime configuration defaults match the shared schema");
     preintegration_core::ImuIncrement acceleration;
     acceleration.dt_s = 0.001;
     acceleration.delta_velocity_mps = Eigen::Vector3d(10.0, -2.0, 0.5) * acceleration.dt_s;
@@ -239,6 +270,101 @@ int main() {
         negative_duration_thrown = true;
     }
     check(negative_duration_thrown, "compose rejects negative duration");
+
+    preintegration_core::NavState environment_initial;
+    environment_initial.velocity_ned_mps = Eigen::Vector3d(1.0, 2.0, 3.0);
+    preintegration_core::PreintegratedDelta unit_delta;
+    unit_delta.duration_s = 1.0;
+    preintegration_core::EarthEnvironment environment;
+    environment.gravity_ned_mps2 = Eigen::Vector3d(0.0, 0.0, 9.8);
+    environment.omega_ie_ned_radps =
+        Eigen::Vector3d(7.0e-5, 0.0, -5.0e-5);
+    environment.omega_en_ned_radps =
+        Eigen::Vector3d(0.1, 0.0, 0.05);
+
+    preintegration_core::RuntimeConfig inert_options;
+    inert_options.enable_earth_rotation = false;
+    inert_options.enable_transport_rate = false;
+    inert_options.enable_coriolis = false;
+    const preintegration_core::NavState inert_end =
+        preintegration_core::composeWithEnvironment(
+            environment_initial, unit_delta, environment, inert_options);
+    const preintegration_core::NavState inert_reference =
+        preintegration_core::compose(
+            environment_initial, unit_delta, environment.gravity_ned_mps2);
+    check(
+        (inert_end.velocity_ned_mps - inert_reference.velocity_ned_mps).norm() <
+                1e-14 &&
+            (inert_end.position_ned_m - inert_reference.position_ned_m).norm() <
+                1e-14 &&
+            inert_end.q_bn.angularDistance(inert_reference.q_bn) < 1e-14,
+        "disabled Earth switches reproduce the inert composition");
+
+    const preintegration_core::NavState earth_end =
+        preintegration_core::composeWithEnvironment(
+            environment_initial,
+            unit_delta,
+            environment,
+            preintegration_core::RuntimeConfig{});
+    const Eigen::Vector3d rate_cross =
+        environment.omega_en_ned_radps +
+        2.0 * environment.omega_ie_ned_radps;
+    const Eigen::Vector3d specific_force =
+        environment.gravity_ned_mps2 -
+        rate_cross.cross(environment_initial.velocity_ned_mps);
+    const Eigen::Vector3d expected_velocity =
+        environment_initial.velocity_ned_mps + specific_force;
+    const Eigen::Vector3d expected_position =
+        environment_initial.position_ned_m +
+        environment_initial.velocity_ned_mps +
+        0.5 * specific_force;
+    const Eigen::Quaterniond expected_earth_attitude = expMap(
+        -(environment.omega_ie_ned_radps +
+          environment.omega_en_ned_radps));
+    check(
+        (earth_end.velocity_ned_mps - expected_velocity).norm() < 1e-12,
+        "Earth composition applies Coriolis and transport terms");
+    check(
+        earth_end.q_bn.angularDistance(expected_earth_attitude) < 1e-12,
+        "Earth composition applies navigation-frame rotation");
+    check(
+        (earth_end.position_ned_m - expected_position).norm() < 1e-12,
+        "Earth composition applies the selected acceleration to position");
+
+    constexpr double latitude_rad =
+        30.5 * 3.14159265358979323846 / 180.0;
+    const preintegration_core::EarthEnvironment generated_environment =
+        preintegration_core::makeEarthEnvironment(
+            latitude_rad,
+            20.0,
+            Eigen::Vector3d(5.0, 2.0, 0.0),
+            preintegration_core::RuntimeConfig{});
+    check(
+        std::abs(generated_environment.gravity_ned_mps2.z() - 9.7935) <
+            2e-3,
+        "generated normal gravity is plausible",
+        generated_environment.gravity_ned_mps2.z());
+    check(
+        generated_environment.omega_ie_ned_radps.x() > 0.0 &&
+            generated_environment.omega_ie_ned_radps.z() < 0.0,
+        "generated Earth rate uses the NED convention");
+    check(
+        generated_environment.omega_en_ned_radps.norm() > 0.0,
+        "generated transport rate is nonzero for horizontal velocity");
+
+    preintegration_core::RuntimeConfig no_earth_config;
+    no_earth_config.enable_earth_rotation = false;
+    no_earth_config.enable_transport_rate = false;
+    const preintegration_core::EarthEnvironment generated_no_earth =
+        preintegration_core::makeEarthEnvironment(
+            latitude_rad,
+            20.0,
+            Eigen::Vector3d(5.0, 2.0, 0.0),
+            no_earth_config);
+    check(
+        generated_no_earth.omega_ie_ned_radps.isZero(0.0) &&
+            generated_no_earth.omega_en_ned_radps.isZero(0.0),
+        "environment builder honors Earth rotation switches");
 
     if (g_failures == 0) {
         std::printf("preintegration_core_tests: all checks passed\n");

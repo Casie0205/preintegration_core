@@ -3,6 +3,8 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+#include "preintegration_core/runtime_config.hpp"
+
 namespace preintegration_core {
 
 // Bias correction and time interpolation belong to the caller. The
@@ -33,9 +35,12 @@ struct NavState {
     Eigen::Quaterniond q_bn{Eigen::Quaterniond::Identity()};
 };
 
-struct PreintegrationOptions {
-    bool enable_coning_sculling{true};
-    double equal_interval_tolerance_s{1e-9};
+struct EarthEnvironment {
+    Eigen::Vector3d gravity_ned_mps2{Eigen::Vector3d::Zero()};
+    Eigen::Vector3d omega_ie_ned_radps{Eigen::Vector3d::Zero()};
+    Eigen::Vector3d omega_en_ned_radps{Eigen::Vector3d::Zero()};
 };
+
+using PreintegrationOptions = RuntimeConfig;
 
 }  // namespace preintegration_core
